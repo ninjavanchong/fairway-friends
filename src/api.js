@@ -4,12 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 // Supabase Edge Function URL in production (set VITE_API_BASE at build time); same-origin path in local dev.
 export const API_BASE = import.meta.env.VITE_API_BASE || "/functions/v1/api";
 
-// Supabase Edge Function URL in production (set VITE_API_BASE at build time); same-origin path in local dev.
-export const API_BASE = import.meta.env.VITE_API_BASE || "/functions/v1/api";
-
-// Supabase Edge Function URL in production (set VITE_API_BASE at build time); same-origin path in local dev.
-export const API_BASE = import.meta.env.VITE_API_BASE || "/functions/v1/api";
-
 export async function api(path, { method = "GET", body } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
