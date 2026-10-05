@@ -148,3 +148,8 @@ export function ShareSheet({ round, onClose, toast }) {
     </Sheet>
   );
 }
+
+/** Score marker: circle = birdie, double circle = eagle+, square = bogey, double square = double bogey+. */
+export function Mark({ cls, children }) {
+  return <span className={`mark ${cls || "none"}`}>{children}</span>;
+}

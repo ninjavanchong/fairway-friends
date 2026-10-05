@@ -14,6 +14,7 @@ export function normalizeBets(b = {}) {
     mode,
     stake: Math.max(0, Math.min(100000, Number(b?.stake) || 0)),
     split,
+    basis: b?.basis === "holes_won" ? "holes_won" : "result",
     step: [0.1, 1].includes(Number(b?.step)) ? Number(b.step) : 0.1,
   };
 }
@@ -29,6 +30,7 @@ export function normalizeMeal(m = {}) {
     method,
     pcts,
     paidBy: m?.paidBy ? Number(m.paidBy) : null,
+    basis: m?.basis === "holes_won" ? "holes_won" : "result",
     step: [0.1, 1].includes(Number(m?.step)) ? Number(m.step) : 0.1,
   };
 }
@@ -91,6 +93,8 @@ function roundNets(nets, stepCents) {
   return rounded;
 }
 
+const partsOf = standings => standings.settleParticipants || standings.participants;
+
 /** Game bets. Returns net sen per player id. */
 export function computeBets(betsIn, standings, players) {
   const bets = normalizeBets(betsIn);
@@ -99,7 +103,7 @@ export function computeBets(betsIn, standings, players) {
   if (bets.mode === "none" || bets.stake <= 0 || players.length < 2) return { bets, nets, notes, pot: 0 };
 
   const partOf = new Map();
-  for (const part of standings.participants) for (const id of part.memberIds) partOf.set(id, part);
+  for (const part of partsOf(standings)) for (const id of part.memberIds) partOf.set(id, part);
   const ok = players.filter(p => partOf.has(p.id));
   const stake = toCents(bets.stake);
   const step = Math.round(bets.step * 100);
@@ -137,7 +141,7 @@ export function computeBets(betsIn, standings, players) {
       else if (diff < 0) { nets[ok[j].id] += amt; nets[ok[i].id] -= amt; }
     }
   }
-  notes.push(`RM${bets.stake.toFixed(2)} per ${standings.spec.style === "strokes" ? "stroke" : standings.spec.style === "match" ? "hole" : "point"} of difference, paid to everyone you beat.`);
+  notes.push(`RM${bets.stake.toFixed(2)} per ${bets.basis === "holes_won" ? "hole won" : standings.spec.style === "strokes" ? "stroke" : standings.spec.style === "match" ? "hole" : "point"} of difference, paid to everyone you beat.`);
   return { bets, nets: roundNets(nets, step), notes, pot: 0 };
 }
 
@@ -148,7 +152,7 @@ export function computeMeal(mealIn, standings, players) {
   if (!meal.enabled || meal.total <= 0 || !players.length) return { meal, shares, total: 0 };
 
   const partOf = new Map();
-  for (const part of standings.participants) for (const id of part.memberIds) partOf.set(id, part);
+  for (const part of partsOf(standings)) for (const id of part.memberIds) partOf.set(id, part);
   const posOf = p => partOf.get(p.id)?.pos ?? 999;
   const groups = groupSlots(players, posOf);
   const lastPos = groups.length ? groups[groups.length - 1].pos : 1;
@@ -200,9 +204,11 @@ export function transfersFrom(nets, nameOf) {
   return out;
 }
 
-export function computeSettlement({ bets, meal, standings, players }) {
-  const b = computeBets(bets, standings, players);
-  const m = computeMeal(meal, standings, players);
+export function computeSettlement({ bets, meal, standings, holesWonStandings, players }) {
+  const bn = normalizeBets(bets), mn = normalizeMeal(meal);
+  const pick = basis => (basis === "holes_won" && holesWonStandings ? holesWonStandings : standings);
+  const b = computeBets(bn, pick(bn.basis), players);
+  const m = computeMeal(mn, pick(mn.basis), players);
   const nets = { ...b.nets };
   const mealNets = Object.fromEntries(players.map(p => [p.id, 0]));
   const payer = m.meal.paidBy && players.some(p => p.id === m.meal.paidBy) ? m.meal.paidBy : null;
@@ -213,7 +219,17 @@ export function computeSettlement({ bets, meal, standings, players }) {
   }
   const byId = Object.fromEntries(players.map(p => [p.id, p.name]));
   const transfers = transfersFrom(nets, id => byId[id]);
+  // Finishing positions on the basis each part of the money was settled by.
+  const ranks = st => {
+    const out = {};
+    for (const part of partsOf(st)) for (const id of part.memberIds) out[id] = part.pos;
+    return out;
+  };
   return {
+    betPos: ranks(pick(bn.basis)),
+    mealPos: ranks(pick(mn.basis)),
+    betBasis: bn.basis,
+    mealBasis: mn.basis,
     betNets: b.nets,
     betNotes: b.notes,
     pot: b.pot,

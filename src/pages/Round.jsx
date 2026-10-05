@@ -4,7 +4,7 @@ import { api, useRound } from "../api.js";
 import { addRecent, getMe, setMe } from "../identity.js";
 import { timeAgo } from "../util.js";
 import { Confetti, Logo, Sheet, ShareSheet, useToast } from "../components/ui.jsx";
-import CourseSheet from "../components/CourseSheet.jsx";
+import SettingsSheet from "../components/SettingsSheet.jsx";
 import Lobby from "./Lobby.jsx";
 import ScoreTab from "./ScoreTab.jsx";
 import BoardTab from "./BoardTab.jsx";
@@ -56,7 +56,12 @@ export default function Round() {
   const [toast, setToast] = useToast();
   const [burst, setBurst] = useState(0);
 
-  useEffect(() => { if (round && me) addRecent({ code, course: round.courseName }); }, [round?.code]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!round || !me) return;
+    addRecent({ code, course: round.courseName });
+    // Coming back to a finished round (maybe hours later): go straight to the settle-up.
+    if (round.status === "finished") setTab("money");
+  }, [round?.code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!me?.playerId) return <Navigate to={`/j/${code}`} replace />;
   if (error) return <div className="card stack"><h2>Round not found</h2><div className="error">{error}</div><Link className="btn" to="/">Back home</Link></div>;
@@ -96,17 +101,18 @@ export default function Round() {
 
   return (
     <div>
-      <div className="topbar">
+      <div className="roundhead">
         <Link to="/" className="brand" aria-label="Home"><Logo /></Link>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: "var(--serif)", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{round.courseName}</div>
-          <div className="row small muted" style={{ gap: 6 }}>{statusPill} <span>{round.name ? round.name + " · " : ""}{round.game.name} · {round.holes}H</span></div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="rtitle">{round.courseName}</div>
+          <div className="row small muted" style={{ gap: 6, flexWrap: "wrap" }}>{statusPill} <span>{round.name ? round.name + " · " : ""}{round.game.name} · {round.holes}H</span></div>
         </div>
-        <div className="spacer" />
-        <button className="iconbtn" onClick={() => setSheet("share")} aria-label="Invite players">📲</button>
-        <button className="iconbtn" onClick={() => setSheet("rules")} aria-label="Game rules">📖</button>
-        <button className="iconbtn" onClick={() => setSheet("course")} aria-label="Course and pars">⛳</button>
-        {!setup && <button className="iconbtn" onClick={() => setSheet("history")} aria-label="Score history">🕘</button>}
+      </div>
+      <div className="actionrow">
+        <button onClick={() => setSheet("share")}><span>📲</span>Invite</button>
+        <button onClick={() => setSheet("rules")}><span>📖</span>Rules</button>
+        {!setup && <button onClick={() => setSheet("history")}><span>🕘</span>History</button>}
+        <button onClick={() => setSheet("settings")}><span>⚙️</span>Settings</button>
       </div>
 
       {setup ? (
@@ -128,7 +134,7 @@ export default function Round() {
 
       {sheet === "share" && <ShareSheet round={round} onClose={() => setSheet(null)} toast={setToast} />}
       {sheet === "rules" && <RulesSheet round={round} onClose={() => setSheet(null)} />}
-      {sheet === "course" && <CourseSheet round={round} a={actions} onClose={() => setSheet(null)} />}
+      {sheet === "settings" && <SettingsSheet round={round} a={actions} onClose={() => setSheet(null)} />}
       {sheet === "history" && <HistorySheet code={code} onClose={() => setSheet(null)} />}
       <Confetti burst={burst} />
       {toast}

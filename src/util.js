@@ -26,3 +26,20 @@ export function timeAgo(iso) {
 }
 
 export const TEAM_KEYS = ["A", "B", "C", "D", "E", "F"];
+
+// "-2", "E", "+3"
+export const fmtToPar = n => (n === 0 ? "E" : n > 0 ? `+${n}` : `${n}`);
+export const toParClass = n => (n < 0 ? "under" : n > 0 ? "over" : "even");
+
+// Metric shown in the last leaderboard column, and what it's called.
+export function metricOf(round, p) {
+  const s = round.standings, g = round.game;
+  if (s.match) return { head: "MATCH", value: p.total > 0 ? `${p.total} UP` : p.total < 0 ? "–" : (s.match.played ? "AS" : "–") };
+  if (g.style === "points") return { head: "POINTS", value: String(p.total) };
+  if (g.style === "holewins") return { head: "HOLES", value: String(p.total) };
+  return { head: g.useHandicap === false ? "GROSS" : "NET", value: p.thru ? String(p.total) : "–" };
+}
+export function toParOf(round, p) {
+  if (!p.holesPlayed) return null;
+  return round.game.useHandicap === false ? p.toParGross : p.toParNet;
+}

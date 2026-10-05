@@ -12,5 +12,5 @@ export function getRecent() {
 export function addRecent(entry) {
   const list = getRecent().filter(r => r.code !== entry.code);
   list.unshift({ ...entry, at: Date.now() });
-  safe(() => localStorage.setItem("ff:recent", JSON.stringify(list.slice(0, 12))));
+  safe(() => localStorage.setItem("ff:recent", JSON.stringify(list.slice(0, 100))));
 }

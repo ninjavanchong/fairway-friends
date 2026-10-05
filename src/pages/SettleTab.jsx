@@ -8,7 +8,6 @@ export default function SettleTab({ round, a }) {
   const [edit, setEdit] = useState(false);
   const [draft, setDraft] = useState(null);
   const nameOf = id => players.find(p => p.id === Number(id))?.name || "?";
-  const posOf = id => standings.participants.find(p => p.memberIds.includes(Number(id)))?.pos;
   const any = s.betsOn || s.mealOn;
 
   const openEdit = () => { setDraft({ bets, meal }); setEdit(true); };
@@ -62,10 +61,11 @@ export default function SettleTab({ round, a }) {
         <div className="card">
           <h3>🎯 Game bet</h3>
           {s.betNotes.map((n, i) => <div key={i} className="small muted">{n}</div>)}
+          <div className="small muted">Ranked by {s.betBasis === "holes_won" ? "holes won" : "the game result"}.</div>
           <div className="list" style={{ marginTop: 6 }}>
             {players.map(p => (
               <div key={p.id} className="li">
-                <div className="grow"><span className="name">{p.name}</span> <span className="small muted">#{posOf(p.id) ?? "–"}</span></div>
+                <div className="grow"><span className="name">{p.name}</span> <span className="small muted">#{s.betPos?.[p.id] ?? "–"}</span></div>
                 <span className={`net ${s.betNets[p.id] >= 0 ? "pos" : "neg"}`}>{s.betNets[p.id] === 0 ? "even" : rmSigned(s.betNets[p.id])}</span>
               </div>
             ))}
@@ -81,6 +81,7 @@ export default function SettleTab({ round, a }) {
             {meal.method === "loser_pays" && "Last place pays."}
             {meal.method === "winner_free" && "Winner eats free."}
             {meal.method === "by_rank" && `By finishing position (${meal.pcts.join("/")}%).`}
+            {" "}Ranked by {s.mealBasis === "holes_won" ? "holes won" : "the game result"}.
             {meal.method === "by_gap" && "The further behind, the more you pay."}
           </div>
           <div className="list" style={{ marginTop: 6 }}>

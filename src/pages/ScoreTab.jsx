@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { scoreClass, scoreName, timeAgo } from "../util.js";
+import { fmtToPar, metricOf, scoreClass, scoreName, timeAgo, toParClass, toParOf } from "../util.js";
 
 const strokesOnHole = (hcp, hole, holes) => {
   const h = Math.max(0, Math.round(Number(hcp) || 0));
@@ -51,14 +51,15 @@ export default function ScoreTab({ round, a, goBoard, openShare }) {
       .finally(() => setLocal(l => { const n = { ...l }; delete n[k]; return n; }));
   };
 
+  const standingFor = ent => {
+    const p = round.standings.participants.find(x => x.memberIds.includes(ent.id));
+    return p && (p.holesPlayed || p.thru) ? p.pos : null;
+  };
   const allDone = entities.every(e => valueOf(e, hole) != null);
   const finished = round.status === "finished";
 
   return (
     <div>
-      {round.status === "active" && (
-        <button className="btn ghost small block" style={{ marginBottom: 10 }} onClick={openShare}>📲 Invite friends: show QR code</button>
-      )}
       {finished && <div className="warn">This round is finished. You can still fix a score if needed.</div>}
       <div className="holenav">
         <button className="iconbtn" disabled={hole <= 1} onClick={() => setHole(hole - 1)} aria-label="Previous hole">‹</button>
@@ -74,6 +75,26 @@ export default function ScoreTab({ round, a, goBoard, openShare }) {
         ))}
       </div>
 
+      <button className="card standings" onClick={goBoard} aria-label="Open the leaderboard">
+        <div className="row" style={{ marginBottom: 4 }}>
+          <b style={{ flex: 1, textAlign: "left" }}>Leaderboard</b>
+          <span className="small muted">tap for the full board ›</span>
+        </div>
+        {round.standings.participants.map(p => {
+          const tp = toParOf(round, p);
+          const m = metricOf(round, p);
+          return (
+            <div key={p.key} className="strow">
+              <span className={`pos ${p.pos === 1 && p.holesPlayed ? "p1" : ""}`}>{p.holesPlayed || p.thru ? p.pos : "–"}</span>
+              <span className="stname">{p.name}</span>
+              <span className="small muted">thru {round.standings.match ? p.thru : p.holesPlayed}</span>
+              <span className={`stpar ${tp == null ? "" : toParClass(tp)}`}>{tp == null ? "–" : fmtToPar(tp)}</span>
+              {(round.game.style === "points" || round.game.style === "holewins" || round.standings.match) && <span className="stval">{m.value}{round.game.style === "points" ? " pts" : ""}</span>}
+            </div>
+          );
+        })}
+      </button>
+
       <div className="stack">
         {entities.map(ent => {
           const v = valueOf(ent, hole);
@@ -85,7 +106,7 @@ export default function ScoreTab({ round, a, goBoard, openShare }) {
             <div key={ent.id} className="card paper">
               <div className="scorecard">
                 <div>
-                  <div className="pname">{ent.name}{ent.id === a.me.playerId && <span className="pill" style={{ marginLeft: 6 }}>you</span>}</div>
+                  <div className="pname">{standingFor(ent) && <span className={`pos mini ${standingFor(ent) === 1 ? "p1" : ""}`}>{standingFor(ent)}</span>}{ent.name}{ent.id === a.me.playerId && <span className="pill" style={{ marginLeft: 6 }}>you</span>}</div>
                   <div className="psub">
                     {ent.sub && <>{ent.sub} · </>}
                     {game.useHandicap !== false && ent.hcp > 0 ? `handicap ${ent.hcp}${got ? ` · ${got} stroke${got > 1 ? "s" : ""} here` : ""}` : "scratch"}

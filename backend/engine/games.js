@@ -124,6 +124,24 @@ export const GAME_PRESETS = [
 
 const POINT_KEYS = ["albatross", "eagle", "birdie", "par", "bogey", "double"];
 
+// teamPlan: { [segmentIndex]: { [playerId]: "A" | "B" | ... | null } } — who is on which team in each stretch.
+function cleanPlan(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [seg, map] of Object.entries(raw)) {
+    const s = Number(seg);
+    if (!Number.isInteger(s) || s < 0 || s > 17 || !map || typeof map !== "object") continue;
+    out[s] = {};
+    for (const [pid, team] of Object.entries(map)) {
+      const id = Number(pid);
+      if (!Number.isInteger(id)) continue;
+      out[s][id] = team ? String(team).toUpperCase().slice(0, 8) : null;
+    }
+  }
+  return out;
+}
+const cleanSwap = v => ([3, 6, 9].includes(Number(v)) ? Number(v) : 0);
+
 export function normalizeGame(game = {}) {
   const g = game || {};
   const type = g.type || "stroke";
@@ -138,12 +156,14 @@ export function normalizeGame(game = {}) {
     teamCount: "best",
     unit: "player",
     style: "strokes",
+    swapEvery: 0,
+    teamPlan: {},
     notes: typeof g.notes === "string" ? g.notes.slice(0, 600) : "",
   };
   if (type === "stroke") return { ...base, style: "strokes" };
   if (type === "stableford") return { ...base, style: "points" };
   if (type === "match") return { ...base, style: "match" };
-  if (type === "bestball") return { ...base, style: "strokes", unit: "team", teamCount: "best" };
+  if (type === "bestball") return { ...base, style: "strokes", unit: "team", teamCount: "best", swapEvery: cleanSwap(g.swapEvery), teamPlan: cleanPlan(g.teamPlan) };
   if (type === "scramble") return { ...base, style: "strokes", unit: "team", teamCount: "single" };
   // custom
   const style = ["strokes", "points", "holewins"].includes(g.style) ? g.style : "points";
@@ -157,7 +177,9 @@ export function normalizeGame(game = {}) {
     ...base,
     style,
     unit: g.unit === "team" ? "team" : "player",
-    teamCount: ["sum", "best"].includes(g.teamCount) ? g.teamCount : "best",
+    teamCount: ["sum", "best", "single"].includes(g.teamCount) ? g.teamCount : "best",
+    swapEvery: g.unit === "team" && g.teamCount !== "single" ? cleanSwap(g.swapEvery) : 0,
+    teamPlan: g.unit === "team" && g.teamCount !== "single" ? cleanPlan(g.teamPlan) : {},
     points,
     holeWinPoints: Number.isFinite(hw) && hw > 0 ? Math.min(hw, 50) : 1,
     tie: g.tie === "none" ? "none" : "split",
@@ -173,6 +195,7 @@ export function rulesFor(game) {
     if (!g.useHandicap) lines.push("Handicap is switched OFF for this round: gross scores only.");
     if (g.scope === "front") lines.push("Only the front 9 holes count.");
     if (g.scope === "back") lines.push("Only the back 9 holes count.");
+    if (g.swapEvery) lines.push(`Partners swap every ${g.swapEvery} holes (see Settings > Players for who is on which team).`);
     return lines;
   }
   const lines = [];
@@ -194,6 +217,7 @@ export function rulesFor(game) {
   lines.push(g.useHandicap ? "Handicap shots are given from hole 1 onward, one per hole." : "No handicap: gross scores.");
   if (g.scope === "front") lines.push("Only the front 9 holes count.");
   if (g.scope === "back") lines.push("Only the back 9 holes count.");
+  if (g.swapEvery) lines.push(`Partners swap every ${g.swapEvery} holes.`);
   if (g.notes) lines.push(g.notes);
   return lines;
 }
@@ -250,71 +274,102 @@ function avg(nums) {
   return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
 }
 
+/** Game that counts holes won outright (used for "settle by holes won" and the holes-won column). */
+export function holesWonGame(game, players) {
+  const s = normalizeGame(game);
+  const teamed = s.unit === "team" || (s.style === "match" && players.some(p => p.team));
+  return {
+    type: "custom", style: "holewins", unit: teamed ? "team" : "player",
+    teamCount: s.unit === "team" ? s.teamCount : "best",
+    useHandicap: s.useHandicap, scope: s.scope, holeWinPoints: 1, tie: "none",
+    swapEvery: s.swapEvery, teamPlan: s.teamPlan,
+  };
+}
+
 /**
  * players: [{id, name, handicap, team}]
  * scores:  { [playerId]: { [holeNo]: strokes } }
- * returns: { game, spec, better, participants: [...], match?, complete, holesCounted }
- * Each participant: { key, name, members, total, toPar, thru, gross, pos, rankValue, label }
+ * returns: { spec, better, participants, settleParticipants?, match, complete, scope }
+ * Each participant: { key, name, memberIds, total, toPar, thru, gross, pos, rankValue, label,
+ *                     holesPlayed, grossTotal, netTotal, parThru, toParNet, toParGross }
+ * settleParticipants: per-player results used for money when partners rotate.
  */
 export function computeStandings({ game, holes, pars, players, scores }) {
   const spec = normalizeGame(game);
   const scope = holesInScope(spec, holes);
   const useH = spec.useHandicap;
+  const scrambleLike = spec.teamCount === "single" && spec.unit === "team";
+  const rotating = spec.unit === "team" && spec.swapEvery > 0 && spec.style !== "match" && !scrambleLike;
+
+  // Which team is a player on at a given hole? (Rotation: look back to the latest plan.)
+  const teamAt = (p, holeNo) => {
+    if (!rotating) return p.team || null;
+    for (let s = Math.floor((holeNo - (scope[0] || 1)) / spec.swapEvery); s >= 0; s--) {
+      const plan = spec.teamPlan?.[s];
+      if (plan && Object.prototype.hasOwnProperty.call(plan, p.id)) return plan[p.id] || null;
+    }
+    return p.team || null;
+  };
+
+  const teamKeys = () => {
+    const set = new Set(players.map(p => p.team).filter(Boolean));
+    if (rotating) for (const plan of Object.values(spec.teamPlan || {})) for (const t of Object.values(plan)) if (t) set.add(t);
+    return [...set].sort();
+  };
+  const teamPart = k => ({ key: `t:${k}`, name: `Team ${k}`, team: k, members: players.filter(p => p.team === k) });
 
   // Build participants.
   let participants;
   if (spec.style === "match") {
-    const teamed = players.some(p => p.team);
-    if (teamed) {
-      const keys = [...new Set(players.map(p => p.team).filter(Boolean))].sort();
-      participants = keys.map(k => ({ key: `t:${k}`, name: `Team ${k}`, team: k, members: players.filter(p => p.team === k) }));
-    } else {
-      participants = players.map(p => ({ key: `p:${p.id}`, name: p.name, members: [p] }));
-    }
-    spec._matchTeamed = teamed;
+    participants = players.some(p => p.team)
+      ? [...new Set(players.map(p => p.team).filter(Boolean))].sort().map(teamPart)
+      : players.map(p => ({ key: `p:${p.id}`, name: p.name, members: [p] }));
   } else if (spec.unit === "team") {
-    const keys = [...new Set(players.map(p => p.team).filter(Boolean))].sort();
-    participants = keys.map(k => ({ key: `t:${k}`, name: `Team ${k}`, team: k, members: players.filter(p => p.team === k) }));
+    participants = teamKeys().map(teamPart);
   } else {
     participants = players.map(p => ({ key: `p:${p.id}`, name: p.name, members: [p] }));
   }
 
-  const isTeamish = participants.some(p => p.team);
-  const scrambleLike = spec.teamCount === "single" && spec.unit === "team";
-  const matchTeam = spec.style === "match" && isTeamish;
+  const membersOf = (part, holeNo) => (part.team && rotating ? players.filter(p => teamAt(p, holeNo) === part.team) : part.members);
+  const sumMode = part => !!part.team && !scrambleLike && spec.style !== "match" && spec.teamCount === "sum";
 
-  // Per hole, per participant: the net strokes that count (or null if not yet played).
+  // Per hole, per participant: the figures that count (or null if not yet played).
   function holeValue(part, holeNo) {
+    const members = membersOf(part, holeNo);
     const memberVals = [];
-    for (const m of part.members) {
+    for (const m of members) {
       const s = scores?.[m.id]?.[holeNo];
       if (s == null) continue;
       const alloc = useH ? strokesOnHole(m.handicap, holeNo, holes) : 0;
       memberVals.push({ gross: s, net: s - alloc });
     }
     if (!memberVals.length) return null;
+    const ids = members.map(m => m.id);
     if (scrambleLike) {
       const gross = Math.min(...memberVals.map(v => v.gross));
-      const teamHcp = Math.round(avg(part.members.map(m => m.handicap)));
+      const teamHcp = Math.round(avg(members.map(m => m.handicap)));
       const alloc = useH ? strokesOnHole(teamHcp, holeNo, holes) : 0;
-      return { net: gross - alloc, gross, memberNets: [gross - alloc] };
+      return { net: gross - alloc, gross, memberNets: [gross - alloc], ids, n: 1 };
     }
-    if (part.team && !scrambleLike) {
-      const sumMode = spec.style !== "match" && spec.teamCount === "sum";
-      if (sumMode && memberVals.length < part.members.length) return null;
+    if (part.team) {
+      const sm = sumMode(part);
+      if (sm && memberVals.length < members.length) return null;
       const nets = memberVals.map(v => v.net);
       return {
-        net: sumMode ? nets.reduce((a, b) => a + b, 0) : Math.min(...nets),
-        gross: sumMode ? memberVals.reduce((a, v) => a + v.gross, 0) : Math.min(...memberVals.map(v => v.gross)),
-        memberNets: nets,
+        net: sm ? nets.reduce((a, b) => a + b, 0) : Math.min(...nets),
+        gross: sm ? memberVals.reduce((a, v) => a + v.gross, 0) : Math.min(...memberVals.map(v => v.gross)),
+        memberNets: nets, ids, n: sm ? members.length : 1,
       };
     }
     const v = memberVals[0];
-    return { net: v.net, gross: v.gross, memberNets: [v.net] };
+    return { net: v.net, gross: v.gross, memberNets: [v.net], ids, n: 1 };
   }
 
   const per = new Map();
   for (const part of participants) per.set(part.key, scope.map(h => ({ hole: h, v: holeValue(part, h) })));
+
+  // Credits per hole (for per-player money results when partners rotate).
+  const credits = []; // { hole, ids, amt }
 
   let better = "low";
   let match = null;
@@ -327,30 +382,31 @@ export function computeStandings({ game, holes, pars, players, scores }) {
       match = { up: 0, played: 0, remaining: scope.length, finished: false, leader: null, label: "Waiting for two sides", margin: 0 };
       participants.forEach(p => { p.total = 0; p.thru = 0; p.rankValue = 0; p.gross = null; p.toPar = null; });
     } else {
-    let up = 0, played = 0, decided = null;
-    for (let i = 0; i < scope.length; i++) {
-      const a = per.get(A.key)[i].v, b = per.get(B.key)[i].v;
-      if (!a || !b) break; // matches are played in order
-      played++;
-      if (a.net < b.net) up++;
-      else if (b.net < a.net) up--;
+      let up = 0, played = 0, decided = null;
+      for (let i = 0; i < scope.length; i++) {
+        const a = per.get(A.key)[i].v, b = per.get(B.key)[i].v;
+        if (!a || !b) break; // matches are played in order
+        played++;
+        if (a.net < b.net) up++;
+        else if (b.net < a.net) up--;
+        const remaining = scope.length - played;
+        if (Math.abs(up) > remaining) { decided = { holes: played, remaining }; break; }
+      }
       const remaining = scope.length - played;
-      if (Math.abs(up) > remaining) { decided = { holes: played, remaining }; break; }
-    }
-    const remaining = scope.length - played;
-    const finished = decided != null || played === scope.length;
-    let label, leader = up > 0 ? A.key : up < 0 ? B.key : null;
-    const lname = up > 0 ? A.name : B.name;
-    if (decided) label = `${lname} wins ${Math.abs(up)}&${decided.remaining}`;
-    else if (finished) label = up === 0 ? "Match halved (all square)" : `${lname} wins ${Math.abs(up)} UP`;
-    else if (played === 0) label = "Not started";
-    else label = up === 0 ? `All square thru ${played}` : `${lname} ${Math.abs(up)} UP thru ${played}`;
-    match = { up, played, remaining, finished, leader, label, margin: Math.abs(up) };
-    for (const part of participants) {
-      part.total = part.key === A.key ? up : -up;
-      part.thru = played;
-    }
-    participants.forEach(p => { p.rankValue = p.total; p.gross = null; p.toPar = null; });
+      const finished = decided != null || played === scope.length;
+      const leader = up > 0 ? A.key : up < 0 ? B.key : null;
+      const lname = up > 0 ? A.name : B.name;
+      let label;
+      if (decided) label = `${lname} wins ${Math.abs(up)}&${decided.remaining}`;
+      else if (finished) label = up === 0 ? "Match halved (all square)" : `${lname} wins ${Math.abs(up)} UP`;
+      else if (played === 0) label = "Not started";
+      else label = up === 0 ? `All square thru ${played}` : `${lname} ${Math.abs(up)} UP thru ${played}`;
+      match = { up, played, remaining, finished, leader, label, margin: Math.abs(up) };
+      for (const part of participants) {
+        part.total = part.key === A.key ? up : -up;
+        part.thru = played;
+      }
+      participants.forEach(p => { p.rankValue = p.total; p.gross = null; p.toPar = null; });
     }
   } else if (spec.style === "strokes") {
     for (const part of participants) {
@@ -359,8 +415,9 @@ export function computeStandings({ game, holes, pars, players, scores }) {
         if (!v) continue;
         total += v.net; gross += v.gross; thru++;
         const par = pars[hole - 1] || 0;
-        // For sum-teams the par baseline scales with member count.
-        parSum += part.team && !scrambleLike && spec.teamCount === "sum" ? par * part.members.length : par;
+        const base = par * (v.n || 1); // sum-teams: the par baseline scales with member count
+        parSum += base;
+        credits.push({ hole, ids: v.ids, amt: -(v.net - base) });
       }
       part.total = total; part.gross = gross; part.thru = thru; part.toPar = total - parSum;
       part.rankValue = thru ? -(total - parSum) : -Infinity;
@@ -375,7 +432,9 @@ export function computeStandings({ game, holes, pars, players, scores }) {
         const par = pars[hole - 1] || 0;
         const pts = v.memberNets.map(n => pointsForDiff(n - par, spec.points));
         // 'sum' teams add everyone's points; 'best' (and singles/players) take the max.
-        total += part.team && !scrambleLike && spec.teamCount === "sum" ? pts.reduce((a, b) => a + b, 0) : Math.max(...pts);
+        const hp = sumMode(part) ? pts.reduce((a, b) => a + b, 0) : Math.max(...pts);
+        total += hp;
+        credits.push({ hole, ids: v.ids, amt: hp });
       }
       part.total = total; part.thru = thru; part.gross = gross; part.toPar = null;
       part.rankValue = total;
@@ -389,18 +448,53 @@ export function computeStandings({ game, holes, pars, players, scores }) {
       participants.forEach(p => { p.thru++; });
       const best = Math.min(...vals.map(x => x.v.net));
       const winners = vals.filter(x => x.v.net === best);
-      if (winners.length === 1) winners[0].p.total += spec.holeWinPoints;
-      else if (spec.tie === "split") winners.forEach(w => { w.p.total += spec.holeWinPoints / winners.length; });
+      if (winners.length === 1) {
+        winners[0].p.total += spec.holeWinPoints;
+        credits.push({ hole: scope[i], ids: winners[0].v.ids, amt: spec.holeWinPoints });
+      } else if (spec.tie === "split") {
+        winners.forEach(w => {
+          const amt = spec.holeWinPoints / winners.length;
+          w.p.total += amt;
+          credits.push({ hole: scope[i], ids: w.v.ids, amt });
+        });
+      }
     }
     participants.forEach(p => { p.total = Math.round(p.total * 100) / 100; p.rankValue = p.total; });
   }
 
+  // Display stats for every style: strokes against par, gross and net.
+  for (const part of participants) {
+    let gross = 0, net = 0, parThru = 0, played = 0;
+    for (const { hole, v } of per.get(part.key)) {
+      if (!v) continue;
+      played++; gross += v.gross; net += v.net;
+      parThru += (pars[hole - 1] || 0) * (v.n || 1);
+    }
+    part.holesPlayed = played; part.grossTotal = gross; part.netTotal = net; part.parThru = parThru;
+    part.toParNet = net - parThru; part.toParGross = gross - parThru;
+  }
+
   // Positions (ties share a position).
-  for (const p of participants) p.pos = 1 + participants.filter(o => o.rankValue > p.rankValue).length;
-  participants.forEach(p => {
-    p.memberIds = p.members.map(m => m.id);
+  const rank = list => { for (const p of list) p.pos = 1 + list.filter(o => o.rankValue > p.rankValue).length; };
+  rank(participants);
+
+  // Partners rotate: money is settled per player, from the credits above.
+  let settleParticipants = null;
+  if (rotating && spec.style !== "match") {
+    settleParticipants = players.map(p => {
+      const total = credits.filter(c => c.ids.includes(p.id)).reduce((a, c) => a + c.amt, 0);
+      return { key: `p:${p.id}`, name: p.name, memberIds: [p.id], rankValue: Math.round(total * 100) / 100 };
+    });
+    rank(settleParticipants);
+  }
+
+  for (const p of participants) {
+    // Everyone who was on this team at any scored hole.
+    p.memberIds = p.team && rotating
+      ? players.filter(pl => scope.some(h => teamAt(pl, h) === p.team)).map(pl => pl.id)
+      : p.members.map(m => m.id);
     delete p.members;
-  });
+  }
   participants.sort((a, b) => a.pos - b.pos || a.name.localeCompare(b.name));
 
   const complete = spec.style === "match"
@@ -419,7 +513,7 @@ export function computeStandings({ game, holes, pars, players, scores }) {
     }
   }
 
-  return { spec, better, participants, match, complete, scope };
+  return { spec, better, participants, settleParticipants, match, complete, scope, rotating };
 }
 
 export function fmtToPar(n) {

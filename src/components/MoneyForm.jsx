@@ -60,6 +60,13 @@ export default function MoneyForm({ bets, meal, onChange, players }) {
           <div className="small muted">The app only works out who owes who. No payments are made here.</div>
         </div>
         <Seg value={mode} onChange={v => setBets({ mode: v, stake: bets.stake || (v === "pot" ? 10 : 1) })} options={[["none", "No bet"], ["pot", "Pot"], ["per_point", "Per point"]]} />
+        {mode !== "none" && (
+          <div className="field">
+            <label>Decide it by</label>
+            <Seg value={bets.basis || "result"} onChange={v => setBets({ basis: v })} options={[["result", "Game result"], ["holes_won", "Holes won"]]} />
+            {bets.basis === "holes_won" && <div className="small muted" style={{ marginTop: 4 }}>Whoever wins the most holes outright wins, whatever the game format.</div>}
+          </div>
+        )}
         {mode === "pot" && (
           <>
             <div className="field">
@@ -101,6 +108,11 @@ export default function MoneyForm({ bets, meal, onChange, players }) {
             <div className="field">
               <label>Total bill (RM)</label>
               <input type="number" inputMode="decimal" min="0" value={meal.total ?? ""} placeholder="You can enter this after the round" onChange={e => setMeal({ total: Number(e.target.value) })} />
+            </div>
+            <div className="field">
+              <label>Decide who pays by</label>
+              <Seg value={meal.basis || "result"} onChange={v => setMeal({ basis: v })} options={[["result", "Game result"], ["holes_won", "Holes won"]]} />
+              {meal.basis === "holes_won" && <div className="small muted" style={{ marginTop: 4 }}>Ranks everyone by holes won outright, then splits the bill using the method below.</div>}
             </div>
             <div className="field">
               <label>How to split it</label>

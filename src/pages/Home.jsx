@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { getRecent } from "../identity.js";
 
 export default function Home() {
-  const recent = getRecent();
+  const count = getRecent().length;
   return (
     <div>
       <div className="hero">
@@ -16,25 +16,9 @@ export default function Home() {
         <p>Score your round, play the game, split the bill.</p>
         <div className="hero-actions">
           <Link className="btn alt block" to="/new">⛳ Start a round</Link>
+          <Link className="btn ghost block" to="/history">📜 Round history{count ? ` (${count})` : ""}</Link>
         </div>
       </div>
-
-      {recent.length > 0 && (
-        <div className="card">
-          <h3>Your recent rounds</h3>
-          <div className="list">
-            {recent.map(r => (
-              <Link key={r.code} to={`/r/${r.code}`} className="li" style={{ textDecoration: "none", color: "inherit" }}>
-                <div className="grow">
-                  <div className="name">{r.course}</div>
-                  <div className="small muted">{new Date(r.at).toLocaleDateString([], { day: "numeric", month: "short" })}</div>
-                </div>
-                <span className="codechip">{r.code}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="card sand small">
         <b>How it works</b>
@@ -42,7 +26,7 @@ export default function Home() {
           <li>Pick your course and a game.</li>
           <li>Friends scan your QR code (or open your link) to join.</li>
           <li>Everyone enters scores. The leaderboard updates live.</li>
-          <li>After the round, see who owes who and split the meal.</li>
+          <li>After the round, see who owes who and split the meal. Your rounds stay in Round history.</li>
         </ol>
       </div>
     </div>

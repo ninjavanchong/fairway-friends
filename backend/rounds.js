@@ -5,7 +5,7 @@
 // recorded with the name of whoever made it ("edited by" notes).
 import crypto from "node:crypto";
 import { pool, tx } from "./db.js";
-import { GAME_PRESETS, computeStandings, normalizeGame, rulesFor, validateSetup } from "./engine/games.js";
+import { GAME_PRESETS, computeStandings, holesWonGame, normalizeGame, rulesFor, validateSetup } from "./engine/games.js";
 import { computeSettlement, normalizeBets, normalizeMeal, MEAL_METHODS } from "./engine/settle.js";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -82,7 +82,11 @@ export async function buildPayload(row) {
   const bets = normalizeBets(parseJson(row.bets_json, {}));
   const meal = normalizeMeal(parseJson(row.meal_json, {}));
   const standings = computeStandings({ game, holes: row.holes, pars, players, scores });
-  const settlement = computeSettlement({ bets, meal, standings, players });
+  // Holes won outright: a column for everyone, and an optional basis for money.
+  const hw = computeStandings({ game: holesWonGame(game, players), holes: row.holes, pars, players, scores });
+  const hwByKey = new Map(hw.participants.map(p => [p.key, p.total]));
+  standings.participants.forEach(p => { p.holesWon = hwByKey.get(p.key) ?? 0; });
+  const settlement = computeSettlement({ bets, meal, standings, holesWonStandings: hw, players });
   return {
     code: row.code,
     name: row.name,
@@ -93,12 +97,13 @@ export async function buildPayload(row) {
     status: row.status,
     rev: row.rev,
     createdBy: row.created_by,
+    createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     game, bets, meal,
     rules: rulesFor(game),
     players,
     scores,
     scoreInfo,
-    standings: { participants: standings.participants, better: standings.better, match: standings.match, complete: standings.complete, scope: standings.scope },
+    standings: { participants: standings.participants, better: standings.better, match: standings.match, complete: standings.complete, scope: standings.scope, rotating: standings.rotating },
     settlement,
     setupErrors: validateSetup(game, players),
   };
@@ -166,6 +171,28 @@ export function mountRounds(app) {
     res.status(201).json({ code, hostPlayerId: hostId });
   });
 
+  // Round history: lightweight summaries for the codes this device has opened.
+  app.post("/api/rounds/summaries", async (req, res) => {
+    const codes = [...new Set((Array.isArray(req.body?.codes) ? req.body.codes : []).map(c => String(c).toUpperCase().replace(/[^A-Z0-9]/g, "")).filter(Boolean))].slice(0, 60);
+    const out = [];
+    for (const code of codes) {
+      const [rows] = await pool.query("SELECT * FROM rounds WHERE code = ?", [code]);
+      if (!rows.length) continue;
+      const p = await buildPayload(rows[0]);
+      const started = p.standings.participants.some(x => x.thru > 0);
+      const lead = started ? p.standings.participants[0] : null;
+      out.push({
+        code: p.code, courseName: p.courseName, name: p.name, gameName: p.game.name, status: p.status, holes: p.holes,
+        createdAt: p.createdAt, playerCount: p.players.length, players: p.players.map(x => x.name),
+        leader: lead ? { name: lead.name, label: lead.label, complete: p.standings.complete } : null,
+        moneyOn: p.settlement.betsOn || p.settlement.mealOn,
+        owed: p.settlement.transfers.length,
+      });
+    }
+    out.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    res.json({ rounds: out });
+  });
+
   app.get("/api/rounds/:code", async (req, res) => {
     const row = await getRoundRow(req.params.code);
     const since = Number(req.query.since);
@@ -190,7 +217,7 @@ export function mountRounds(app) {
     if (n >= MAX_PLAYERS) throw httpError(400, "This round is full.");
     let player;
     await tx(async conn => {
-      const id = await insertPlayer(conn, row.id, { name, handicap: row.status === "setup" ? body.handicap : 0, team: null });
+      const id = await insertPlayer(conn, row.id, { name, handicap: body.handicap, team: null });
       await bump(conn, row.id);
       const [p] = await conn.query("SELECT id, name, handicap, team FROM players WHERE id = ?", [id]);
       player = p[0];
@@ -205,7 +232,6 @@ export function mountRounds(app) {
     const setup = row.status === "setup";
     if (typeof b.name === "string") { sets.push("name = ?"); vals.push(cleanName(b.name, 100) || null); }
     if (b.game) {
-      if (!setup && normalizeGame(b.game).type !== normalizeGame(parseJson(row.game_json, {})).type) throw httpError(400, "The game type can't be changed after the round starts.");
       sets.push("game_json = ?"); vals.push(JSON.stringify(normalizeGame(b.game)));
     }
     if (b.bets) { sets.push("bets_json = ?"); vals.push(JSON.stringify(normalizeBets(b.bets))); }
@@ -213,6 +239,7 @@ export function mountRounds(app) {
     if (b.pars) {
       sets.push("pars = ?"); vals.push(JSON.stringify(parsePars(b.pars, row.holes)));
     }
+    if (b.courseName) { sets.push("course_name = ?"); vals.push(cleanName(b.courseName, 160) || row.course_name); }
     if (b.status && b.status !== row.status) {
       if (!["setup", "active", "finished"].includes(b.status)) throw httpError(400, "Unknown status");
       if (b.status === "active" && row.status === "setup") {
@@ -246,11 +273,9 @@ export function mountRounds(app) {
       sets.push("name = ?"); vals.push(name);
     }
     if (b.handicap !== undefined) {
-      if (row.status !== "setup") throw httpError(400, "Handicaps are locked once the round has started.");
       sets.push("handicap = ?"); vals.push(clampInt(b.handicap, 0, 54, 0));
     }
     if (b.team !== undefined) {
-      if (row.status !== "setup") throw httpError(400, "Teams are locked once the round has started.");
       sets.push("team = ?"); vals.push(b.team ? cleanName(b.team, 8).toUpperCase() || null : null);
     }
     if (sets.length) await tx(async conn => {
@@ -262,7 +287,6 @@ export function mountRounds(app) {
 
   app.delete("/api/rounds/:code/players/:pid", async (req, res) => {
     const row = await getRoundRow(req.params.code);
-    if (row.status !== "setup") throw httpError(400, "Players can only be removed before the round starts.");
     await tx(async conn => {
       await conn.query("DELETE FROM players WHERE id = ? AND round_id = ?", [Number(req.params.pid), row.id]);
       await bump(conn, row.id);

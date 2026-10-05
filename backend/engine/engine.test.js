@@ -217,3 +217,35 @@ test("team games with no teams yet do not crash", () => {
     assert.equal(r.participants.length, 0);
   }
 });
+
+test("best ball with partners swapping every 3 holes", () => {
+  // 6 holes, swap every 3. Segment 0: A={1,2} B={3,4}. Segment 1: A={1,3} B={2,4}.
+  const players = [mk(1, "P1", 0, "A"), mk(2, "P2", 0, "A"), mk(3, "P3", 0, "B"), mk(4, "P4", 0, "B")];
+  const pars6 = Array(6).fill(4);
+  const game = { type: "bestball", useHandicap: false, swapEvery: 3, teamPlan: { 1: { 1: "A", 3: "A", 2: "B", 4: "B" } } };
+  // P1 scores 4 every hole, P2 5, P3 6, P4 7.
+  const scores = { 1: sc(Array(6).fill(4)), 2: sc(Array(6).fill(5)), 3: sc(Array(6).fill(6)), 4: sc(Array(6).fill(7)) };
+  const r = computeStandings({ game, holes: 6, pars: pars6, players, scores });
+  const A = r.participants.find(p => p.name === "Team A"), B = r.participants.find(p => p.name === "Team B");
+  // Seg 0: A best=4 (P1), B best=6 (P3). Seg 1: A has P1+P3 best=4, B has P2+P4 best=5.
+  assert.equal(A.total, 4 * 6);
+  assert.equal(B.total, 6 * 3 + 5 * 3);
+  assert.equal(r.rotating, true);
+  assert.ok(r.settleParticipants);
+  const p3 = r.settleParticipants.find(p => p.name === "P3");
+  // P3: 3 holes on B (team result 6 -> -2 each) + 3 holes on A (team result 4 -> 0 each) = -6
+  assert.equal(p3.rankValue, -6);
+});
+
+test("settle by holes won instead of game result", () => {
+  const players = [mk(1, "A"), mk(2, "B")];
+  const standings = { spec: { style: "strokes" }, participants: [
+    { key: "p:1", memberIds: [1], pos: 1, rankValue: -1 }, { key: "p:2", memberIds: [2], pos: 2, rankValue: -2 } ] };
+  const holesWon = { spec: { style: "holewins" }, participants: [
+    { key: "p:1", memberIds: [1], pos: 2, rankValue: 3 - 3 }, { key: "p:2", memberIds: [2], pos: 1, rankValue: 5 } ] };
+  holesWon.participants[0].rankValue = 2; // A won 2 holes, B won 5
+  const r = computeSettlement({ bets: { mode: "per_point", stake: 1, basis: "holes_won" }, meal: {}, standings, holesWonStandings: holesWon, players });
+  assert.deepEqual(r.betNets, { 1: -300, 2: 300 });
+  const r2 = computeSettlement({ bets: { mode: "per_point", stake: 1 }, meal: {}, standings, holesWonStandings: holesWon, players });
+  assert.deepEqual(r2.betNets, { 1: 100, 2: -100 });
+});
