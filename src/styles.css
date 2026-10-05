@@ -109,14 +109,14 @@ label { display: block; font-weight: 600; font-size: .9rem; margin: 0 0 4px; col
 .iconbtn { border: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; min-width: 44px; min-height: 44px; font-size: 1.1rem; cursor: pointer; }
 
 .hero {
-  background: linear-gradient(180deg, var(--sky) 0%, var(--sky) 55%, var(--green-500) 55%, var(--green-700) 100%);
+  background: linear-gradient(180deg, #dff0fa 0%, #dff0fa 66%, #3c9a5a 66%, #1f6b3a 100%);
   border-radius: 24px; padding: 28px 20px 24px; margin: 6px 0 18px; text-align: center; position: relative; overflow: hidden;
   box-shadow: var(--shadow);
 }
-.hero h1 { color: var(--green-900); font-size: 2.2rem; }
-.hero p { color: var(--green-900); margin-bottom: 16px; }
+.hero h1 { color: #0f4a27; font-size: 2.2rem; }
+.hero p { color: #0f4a27; margin-bottom: 16px; }
 .hero .flag { width: 84px; height: 84px; margin: 0 auto 4px; display: block; }
-.hero-actions { display: grid; gap: 10px; margin-top: 70px; }
+.hero-actions { display: grid; gap: 10px; margin-top: 56px; }
 .hero .btn.ghost { background: rgba(255,255,255,.92); color: var(--green-900); border-color: transparent; }
 
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .78rem; font-weight: 700; background: var(--green-100); color: var(--green-700); }
@@ -278,3 +278,6 @@ table.sc td.tot { font-weight: 800; background: var(--green-100); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 @media (max-width: 380px) { .grid3 { grid-template-columns: repeat(2, 1fr); } .pargrid { grid-template-columns: repeat(6, 1fr); } }
+
+.pos { color: var(--par); }
+.pos.p1 { color: #3a2e00; }

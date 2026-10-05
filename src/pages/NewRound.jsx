@@ -8,6 +8,7 @@ import MoneyForm from "../components/MoneyForm.jsx";
 import { Seg, Sheet } from "../components/ui.jsx";
 
 const STEPS = ["Course", "Game", "Money", "Go"];
+const gameNames = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", bestball: "Team Best Ball", scramble: "Scramble" };
 const DEFAULT_PARS = [4, 4, 3, 5, 4, 4, 3, 5, 4, 4, 4, 3, 5, 4, 4, 3, 5, 4];
 
 export default function NewRound() {
@@ -126,7 +127,7 @@ export default function NewRound() {
       {step === 3 && (
         <div className="card paper stack">
           <div><b>{course?.name || "Casual round"}</b> · {holes} holes · par {parTotal}</div>
-          <div>Game: <b>{game.type === "custom" ? game.name || "Custom Game" : game.type}</b>{game.useHandicap === false ? " (no handicap)" : ""}</div>
+          <div>Game: <b>{game.type === "custom" ? game.name || "Custom Game" : (gameNames[game.type] || game.type)}</b>{game.useHandicap === false ? " (no handicap)" : ""}</div>
           <div>Bet: <b>{bets.mode === "none" ? "none" : bets.mode === "pot" ? `RM${bets.stake} pot` : `RM${bets.stake} per point`}</b></div>
           <div>Meal split: <b>{meal.enabled ? "on" : "off"}</b></div>
           <p className="muted small">Next you'll get a QR code for your friends to scan, and you can set handicaps and teams before the first tee.</p>
