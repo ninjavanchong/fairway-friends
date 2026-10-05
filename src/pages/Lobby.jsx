@@ -41,7 +41,7 @@ export default function Lobby({ round, a }) {
     <div className="stack">
       <div className="card paper">
         <h2>Waiting room</h2>
-        <p className="muted small" style={{ marginBottom: 0 }}>Friends scan this QR code to join. Set handicaps {showTeams ? "and teams " : ""}below, then tee off.</p>
+        <p className="muted small" style={{ marginBottom: 0 }}>Friends scan this QR code to join. Or skip the scanning: add everyone by name below and enter all the scores yourself. Set handicaps {showTeams ? "and teams " : ""}then tee off.</p>
       </div>
 
       <div className="card"><InviteBody round={round} toast={a.toast} /></div>
@@ -72,7 +72,7 @@ export default function Lobby({ round, a }) {
           ))}
         </div>
         <form className="row" onSubmit={add} style={{ marginTop: 10 }}>
-          <input value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Add a player by name" aria-label="Add a player" />
+          <input value={name} maxLength={40} onChange={e => setName(e.target.value)} placeholder="Add a friend by name (you can score for them)" aria-label="Add a player" />
           <button className="btn small" type="submit" disabled={!name.trim()}>Add</button>
         </form>
       </div>

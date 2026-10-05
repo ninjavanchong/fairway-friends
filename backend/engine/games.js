@@ -228,7 +228,7 @@ export function pointsForDiff(diff, table = STABLEFORD) {
 export function validateSetup(game, players) {
   const g = normalizeGame(game);
   const errs = [];
-  if (players.length < 2) errs.push("Add at least 2 players.");
+  if (players.length < 1) errs.push("Add at least 1 player.");
   if (g.type === "match") {
     const teamed = players.filter(p => p.team);
     if (teamed.length) {
@@ -322,6 +322,11 @@ export function computeStandings({ game, holes, pars, players, scores }) {
   if (spec.style === "match") {
     better = "high";
     const [A, B] = participants;
+    if (!A || !B) {
+      // Not enough sides yet (e.g. only the host is in the lobby).
+      match = { up: 0, played: 0, remaining: scope.length, finished: false, leader: null, label: "Waiting for two sides", margin: 0 };
+      participants.forEach(p => { p.total = 0; p.thru = 0; p.rankValue = 0; p.gross = null; p.toPar = null; });
+    } else {
     let up = 0, played = 0, decided = null;
     for (let i = 0; i < scope.length; i++) {
       const a = per.get(A.key)[i].v, b = per.get(B.key)[i].v;
@@ -346,6 +351,7 @@ export function computeStandings({ game, holes, pars, players, scores }) {
       part.thru = played;
     }
     participants.forEach(p => { p.rankValue = p.total; p.gross = null; p.toPar = null; });
+    }
   } else if (spec.style === "strokes") {
     for (const part of participants) {
       let total = 0, gross = 0, thru = 0, parSum = 0;

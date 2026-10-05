@@ -13,7 +13,7 @@ function editNote(info, player, entityName) {
   return null;
 }
 
-export default function ScoreTab({ round, a, goBoard }) {
+export default function ScoreTab({ round, a, goBoard, openShare }) {
   const { holes, pars, players, game } = round;
   const scramble = game.unit === "team" && game.teamCount === "single";
 
@@ -56,6 +56,9 @@ export default function ScoreTab({ round, a, goBoard }) {
 
   return (
     <div>
+      {round.status === "active" && (
+        <button className="btn ghost small block" style={{ marginBottom: 10 }} onClick={openShare}>📲 Invite friends: show QR code</button>
+      )}
       {finished && <div className="warn">This round is finished. You can still fix a score if needed.</div>}
       <div className="holenav">
         <button className="iconbtn" disabled={hole <= 1} onClick={() => setHole(hole - 1)} aria-label="Previous hole">‹</button>

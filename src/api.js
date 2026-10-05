@@ -26,6 +26,7 @@ export async function api(path, { method = "GET", body } = {}) {
 export function useRound(code, intervalMs = 3000) {
   const [round, setRound] = useState(null);
   const [error, setError] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const revRef = useRef(0);
   const holds = useRef(0);
 
@@ -34,6 +35,7 @@ export function useRound(code, intervalMs = 3000) {
     revRef.current = data.rev;
     setRound(data);
     setError(null);
+    setLoadError(null);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -42,6 +44,7 @@ export function useRound(code, intervalMs = 3000) {
       if (holds.current === 0) apply(data);
     } catch (e) {
       if (e.status === 404) setError(e.message);
+      else setLoadError(e.message || "Could not reach the server");
     }
   }, [code, apply]);
 
@@ -49,6 +52,7 @@ export function useRound(code, intervalMs = 3000) {
     revRef.current = 0;
     setRound(null);
     setError(null);
+    setLoadError(null);
     refresh();
     const t = setInterval(() => { if (!document.hidden) refresh(); }, intervalMs);
     const vis = () => { if (!document.hidden) refresh(); };
@@ -68,5 +72,5 @@ export function useRound(code, intervalMs = 3000) {
     }
   }, [apply]);
 
-  return { round, error, mutate, refresh, setRound };
+  return { round, error, loadError, mutate, refresh, setRound };
 }

@@ -6,6 +6,7 @@ import CourseEditor from "../components/CourseEditor.jsx";
 import GamePicker from "../components/GamePicker.jsx";
 import MoneyForm from "../components/MoneyForm.jsx";
 import { Seg, Sheet } from "../components/ui.jsx";
+import { LayoutName, ParsGrid } from "../components/ParsEditor.jsx";
 
 const STEPS = ["Course", "Game", "Money", "Go"];
 const gameNames = { stroke: "Stroke Play", stableford: "Stableford", match: "Match Play", bestball: "Team Best Ball", scramble: "Scramble" };
@@ -20,6 +21,8 @@ export default function NewRound() {
   const [course, setCourse] = useState(null); // full course w/ holes
   const [holes, setHoles] = useState(18);
   const [nine, setNine] = useState("front");
+  const [layout, setLayout] = useState("");
+  const [parsOverride, setParsOverride] = useState(null);
   const [editor, setEditor] = useState(null); // null | "new" | course
   const [game, setGame] = useState({ type: "stroke", useHandicap: true });
   const [bets, setBets] = useState({ mode: "none", stake: 10, split: [100], step: 0.1 });
@@ -42,8 +45,11 @@ export default function NewRound() {
 
   const basePars = course ? course.holes.map(h => h.par) : DEFAULT_PARS;
   const courseHoles = basePars.length;
-  const pars = holes === 18 ? basePars.slice(0, 18) : (courseHoles >= 18 && nine === "back" ? basePars.slice(9, 18) : basePars.slice(0, 9));
+  const derivedPars = holes === 18 ? basePars.slice(0, 18) : (courseHoles >= 18 && nine === "back" ? basePars.slice(9, 18) : basePars.slice(0, 9));
+  const pars = parsOverride && parsOverride.length === derivedPars.length ? parsOverride : derivedPars;
   const parTotal = pars.reduce((a, b) => a + b, 0);
+
+  useEffect(() => { setParsOverride(null); }, [course?.id, holes, nine]);
 
   const canNext = step === 0 ? hostName.trim().length > 0 : true;
 
@@ -56,6 +62,7 @@ export default function NewRound() {
         body: {
           hostName: hostName.trim(),
           courseId: course?.id || null,
+          name: layout.trim() || undefined,
           courseName: course?.name || "Casual round",
           holes, pars, game, bets, meal,
         },
@@ -105,6 +112,11 @@ export default function NewRound() {
               <span style={{ flex: 1 }}>How many holes?</span>
               <Seg value={holes} onChange={setHoles} options={[[9, "9"], [18, "18"]]} />
             </div>
+            <LayoutName value={layout} onChange={setLayout} />
+            <details className="how">
+              <summary>Edit pars for this round</summary>
+              <div style={{ marginTop: 8 }}><ParsGrid pars={pars} onChange={setParsOverride} /></div>
+            </details>
             {holes === 9 && courseHoles >= 18 && (
               <div className="row wrap">
                 <span style={{ flex: 1 }}>Which nine?</span>
@@ -126,7 +138,7 @@ export default function NewRound() {
 
       {step === 3 && (
         <div className="card paper stack">
-          <div><b>{course?.name || "Casual round"}</b> · {holes} holes · par {parTotal}</div>
+          <div><b>{course?.name || "Casual round"}</b>{layout.trim() ? ` (${layout.trim()})` : ""} · {holes} holes · par {parTotal}</div>
           <div>Game: <b>{game.type === "custom" ? game.name || "Custom Game" : (gameNames[game.type] || game.type)}</b>{game.useHandicap === false ? " (no handicap)" : ""}</div>
           <div>Bet: <b>{bets.mode === "none" ? "none" : bets.mode === "pot" ? `RM${bets.stake} pot` : `RM${bets.stake} per point`}</b></div>
           <div>Meal split: <b>{meal.enabled ? "on" : "off"}</b></div>

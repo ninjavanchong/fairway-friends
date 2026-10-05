@@ -202,3 +202,18 @@ test("allocate and transfers helpers", () => {
   assert.equal(t.reduce((a, x) => a + x.cents, 0), 1000);
   assert.ok(t.length <= 3);
 });
+
+test("match play with fewer than two sides does not crash (lobby)", () => {
+  const r = computeStandings({ game: { type: "match" }, holes: 18, pars: pars18, players: [mk(1, "Host")], scores: {} });
+  assert.equal(r.match.finished, false);
+  assert.match(r.match.label, /Waiting/);
+  const r2 = computeStandings({ game: { type: "match" }, holes: 18, pars: pars18, players: [mk(1, "A", 0, "A"), mk(2, "B", 0, "A")], scores: {} });
+  assert.equal(r2.complete, false);
+});
+
+test("team games with no teams yet do not crash", () => {
+  for (const type of ["bestball", "scramble"]) {
+    const r = computeStandings({ game: { type }, holes: 9, pars: pars9, players: [mk(1, "A"), mk(2, "B")], scores: {} });
+    assert.equal(r.participants.length, 0);
+  }
+});
