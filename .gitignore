@@ -1,0 +1,12 @@
+node_modules
+dist
+backend/public
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+
+# Substrait CLI link state
+.substrait/
+.claude/

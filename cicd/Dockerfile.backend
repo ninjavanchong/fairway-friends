@@ -1,0 +1,23 @@
+# ---- build the React frontend ----
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+# ---- runtime: Express API + built SPA ----
+FROM node:20-alpine
+RUN apk upgrade --no-cache
+ENV NODE_ENV=production
+WORKDIR /app
+COPY backend/package.json ./
+RUN npm install --omit=dev
+COPY backend/*.js ./
+# Subfolders must be copied explicitly (the line above is top-level files only).
+COPY backend/engine ./engine
+COPY backend/seed ./seed
+COPY --from=build /app/dist ./public
+
+EXPOSE 8000
+CMD ["node", "server.js"]

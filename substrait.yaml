@@ -1,0 +1,4 @@
+# Substrait app manifest (required at the repo root).
+description: "Fairway Friends: a fun, lightweight golf scorecard for friends' rounds in Malaysia. Pick a game (stroke play, Stableford, match play, best ball, scramble or a custom game), share a QR code so everyone can join and score live, then settle bets and split the meal bill after the round."
+database: oceanbase
+services: {}
