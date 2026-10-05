@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { TEAM_KEYS } from "../util.js";
+import { TEAM_KEYS, joinUrl } from "../util.js";
 
 export function Logo() {
   return (
@@ -118,7 +118,7 @@ export function QrCode({ url }) {
 }
 
 export function InviteBody({ round, toast }) {
-  const url = `${location.origin}/j/${round.code}`;
+  const url = joinUrl(round.code);
   const text = `Join our golf round at ${round.courseName} on Fairway Friends ⛳
 ${url}
 (code ${round.code})`;

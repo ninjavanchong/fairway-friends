@@ -1,11 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+// VITE_BASE is "/fairway-friends/" when built for GitHub Pages, "/" locally.
 export default defineConfig({
+  base: process.env.VITE_BASE || "/",
   plugins: [react()],
-  server: {
-    // Local dev is same-origin like production: relative /api paths are
-    // forwarded to the backend on :8000.
-    proxy: { "/api": "http://localhost:8000" },
-  },
 });

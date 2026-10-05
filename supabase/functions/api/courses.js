@@ -1,12 +1,5 @@
-// Course list (par per hole). Seeded from backend/seed/courses.json at boot
-// (INSERT IGNORE by name, so player edits are never overwritten) and editable
-// in the app so the list improves over time.
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// Course list (par per hole). Seeded by a migration and editable in the app so the list improves over time.
 import { pool, tx } from "./db.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const STATES = ["Kuala Lumpur", "Selangor", "Negeri Sembilan", "Pahang", "Penang", "Johor", "Melaka", "Perak", "Kedah", "Perlis", "Kelantan", "Terengganu", "Putrajaya", "Other"];
 
@@ -29,37 +22,15 @@ function cleanHoles(raw) {
   });
 }
 
-export async function seedCourses() {
-  const file = path.join(__dirname, "seed", "courses.json");
-  if (!fs.existsSync(file)) return;
-  const list = JSON.parse(fs.readFileSync(file, "utf8"));
-  let added = 0;
-  for (const c of list) {
-    const name = clean(c.name, 160);
-    if (!name || !Array.isArray(c.holes) || ![9, 18].includes(c.holes.length)) continue;
-    await tx(async conn => {
-      const [r] = await conn.query("INSERT IGNORE INTO courses (name, state, source, verified) VALUES (?,?,?,?)",
-        [name, clean(c.state, 60) || "Other", clean(c.source, 120) || null, c.verified ? 1 : 0]);
-      if (!r.affectedRows) return;
-      added++;
-      for (let i = 0; i < c.holes.length; i++) {
-        await conn.query("INSERT INTO course_holes (course_id, hole_no, par, yards) VALUES (?,?,?,?)",
-          [r.insertId, i + 1, Math.round(Number(c.holes[i].par)) || 4, Number(c.holes[i].yards) || null]);
-      }
-    });
-  }
-  if (added) console.log(`Seeded ${added} courses`);
-}
-
 export function mountCourses(app) {
   app.get("/api/courses", async (req, res) => {
     const q = clean(req.query.q, 60);
     const state = clean(req.query.state, 60);
     const where = [], vals = [];
-    if (q) { where.push("c.name LIKE ?"); vals.push(`%${q.replace(/[%_]/g, "")}%`); }
+    if (q) { where.push("c.name ILIKE ?"); vals.push(`%${q.replace(/[%_]/g, "")}%`); }
     if (state) { where.push("c.state = ?"); vals.push(state); }
     const [rows] = await pool.query(
-      `SELECT c.id, c.name, c.state, c.verified, COUNT(h.hole_no) AS holes, COALESCE(SUM(h.par), 0) AS par
+      `SELECT c.id, c.name, c.state, c.verified, COUNT(h.hole_no)::int AS holes, COALESCE(SUM(h.par), 0)::int AS par
          FROM courses c LEFT JOIN course_holes h ON h.course_id = c.id
          ${where.length ? "WHERE " + where.join(" AND ") : ""}
         GROUP BY c.id, c.name, c.state, c.verified ORDER BY c.name LIMIT 300`, vals);
@@ -81,8 +52,8 @@ export function mountCourses(app) {
     let id;
     try {
       await tx(async conn => {
-        const [r] = await conn.query("INSERT INTO courses (name, state, source, verified) VALUES (?,?,?,0)", [name, state, "added in app"]);
-        id = r.insertId;
+        const [r] = await conn.query("INSERT INTO courses (name, state, source, verified) VALUES (?,?,?,false) RETURNING id", [name, state, "added in app"]);
+        id = r[0].id;
         for (const h of holes) await conn.query("INSERT INTO course_holes (course_id, hole_no, par, yards) VALUES (?,?,?,?)", [id, h.hole_no, h.par, h.yards]);
       });
     } catch (e) {

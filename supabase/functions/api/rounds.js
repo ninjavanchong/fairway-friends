@@ -3,7 +3,6 @@
 // Identity is deliberately light: friends type a name when they join and the
 // browser remembers it. Anyone in a round may edit any score; every write is
 // recorded with the name of whoever made it ("edited by" notes).
-import crypto from "node:crypto";
 import { pool, tx } from "./db.js";
 import { GAME_PRESETS, computeStandings, holesWonGame, normalizeGame, rulesFor, validateSetup } from "./engine/games.js";
 import { computeSettlement, normalizeBets, normalizeMeal, MEAL_METHODS } from "./engine/settle.js";
@@ -12,7 +11,7 @@ const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const MAX_PLAYERS = 16;
 
 function genCode() {
-  const bytes = crypto.randomBytes(6);
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
   return Array.from(bytes, b => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
 }
 
@@ -110,9 +109,9 @@ export async function buildPayload(row) {
 }
 
 async function insertPlayer(conn, roundId, { name, handicap, team }) {
-  const [r] = await conn.query("INSERT INTO players (round_id, name, handicap, team) VALUES (?, ?, ?, ?)",
+  const [r] = await conn.query("INSERT INTO players (round_id, name, handicap, team) VALUES (?, ?, ?, ?) RETURNING id",
     [roundId, name, clampInt(handicap, 0, 54, 0), team ? cleanName(team, 8).toUpperCase() || null : null]);
-  return r.insertId;
+  return r[0].id;
 }
 
 export function mountRounds(app) {
@@ -154,9 +153,9 @@ export function mountRounds(app) {
       try {
         await tx(async conn => {
           const [r] = await conn.query(
-            "INSERT INTO rounds (code, name, course_id, course_name, holes, pars, game_json, bets_json, meal_json, status, created_by) VALUES (?,?,?,?,?,?,?,?,?, 'setup', ?)",
+            "INSERT INTO rounds (code, name, course_id, course_name, holes, pars, game_json, bets_json, meal_json, status, created_by) VALUES (?,?,?,?,?,?,?,?,?, 'setup', ?) RETURNING id",
             [code, cleanName(b.name, 100) || null, courseId, courseName, holes, JSON.stringify(pars), JSON.stringify(game), JSON.stringify(bets), JSON.stringify(meal), hostName]);
-          roundId = r.insertId;
+          roundId = r[0].id;
           for (let i = 0; i < people.length; i++) {
             const pid = await insertPlayer(conn, roundId, people[i]);
             if (i === 0) hostId = pid;
@@ -213,7 +212,7 @@ export function mountRounds(app) {
     if (!name) throw httpError(400, "Type your name to join.");
     const [existing] = await pool.query("SELECT id, name, handicap, team FROM players WHERE round_id = ? AND LOWER(name) = LOWER(?)", [row.id, name]);
     if (existing.length) return res.json({ player: existing[0] });
-    const [[{ n }]] = await pool.query("SELECT COUNT(*) AS n FROM players WHERE round_id = ?", [row.id]);
+    const [[{ n }]] = await pool.query("SELECT COUNT(*)::int AS n FROM players WHERE round_id = ?", [row.id]);
     if (n >= MAX_PLAYERS) throw httpError(400, "This round is full.");
     let player;
     await tx(async conn => {

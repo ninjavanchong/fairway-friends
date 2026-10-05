@@ -43,3 +43,12 @@ export function toParOf(round, p) {
   if (!p.holesPlayed) return null;
   return round.game.useHandicap === false ? p.toParGross : p.toParNet;
 }
+
+// Public link a friend opens (or scans) to join. Works under a sub-path such as GitHub Pages.
+export const joinUrl = code => `${location.origin}${import.meta.env.BASE_URL}j/${code}`;
+
+// Public link a friend opens (or scans) to join. Works under a sub-path such as GitHub Pages.
+export const joinUrl = code => `${location.origin}${import.meta.env.BASE_URL}j/${code}`;
+
+// Public link a friend opens (or scans) to join. Works under a sub-path such as GitHub Pages.
+export const joinUrl = code => `${location.origin}${import.meta.env.BASE_URL}j/${code}`;

@@ -24,7 +24,7 @@ function Shell({ children, bare }) {
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Shell bare><Home /></Shell>} />
         <Route path="/history" element={<Shell><History /></Shell>} />

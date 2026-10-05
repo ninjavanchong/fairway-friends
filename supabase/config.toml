@@ -1,0 +1,6 @@
+# Supabase project config. Project ref: hcjklyndsoyjhgpildrz
+project_id = "fairway-friends"
+
+[functions.api]
+# Public API: friends join by link with no sign-in, so no JWT is required.
+verify_jwt = false
